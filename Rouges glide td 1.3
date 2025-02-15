@@ -1,0 +1,156 @@
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local player = game.Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- Create the ScreenGui
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "MyScreenGui"
+screenGui.Parent = playerGui
+
+--------------------------------------------------
+-- Primary Button Setup (High Jump + Spawns 2nd Button)
+--------------------------------------------------
+local button2 = Instance.new("ImageButton")
+button2.Size = UDim2.new(0.08, 0, 0.2, 0)       
+button2.Position = UDim2.new(0.9, 0, 0.2, 0)          
+button2.Image = "rbxassetid://90687804469181"  
+button2.BackgroundTransparency = 1                   
+button2.Parent = screenGui                           
+
+local cancelButton -- Declare cancel button so it can be accessed globally
+
+local function activatePrimaryButton()
+    if not button2.Visible then return end -- Prevent activation during cooldown
+
+    local character = player.Character or player.CharacterAdded:Wait()
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    
+    if humanoid then
+        -- Boost JumpPower for a high jump and force the jump
+        local defaultJumpPower = humanoid.JumpPower
+        humanoid.JumpPower = 100
+        humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+        
+        -- Reset JumpPower when landed (for the high jump)
+        local jumpConn = humanoid.StateChanged:Connect(function(_, newState)
+            if newState == Enum.HumanoidStateType.Landed then
+                humanoid.JumpPower = defaultJumpPower
+                jumpConn:Disconnect()
+            end
+        end)
+    end
+
+    -- Create the second button (Random Position, Doubled Size)
+    local newButton = Instance.new("ImageButton")
+    newButton.Size = UDim2.new(0.16, 0, 0.4, 0)  
+    newButton.Position = UDim2.new(math.random(), 0, math.random() * 0.5, 0) 
+    newButton.Image = "rbxassetid://119315506134804"  
+    newButton.BackgroundTransparency = 1
+    newButton.Parent = screenGui
+
+    local buttonLandConn
+    buttonLandConn = humanoid.StateChanged:Connect(function(_, newState)
+        if newState == Enum.HumanoidStateType.Landed then
+            if newButton and newButton.Parent then
+                newButton:Destroy()
+            end
+            buttonLandConn:Disconnect()
+        end
+    end)
+     
+    --------------------------------------------------
+    -- Second Button Action (Triggers Slow-Fall + Animations)
+    --------------------------------------------------
+    newButton.MouseButton1Click:Connect(function()
+        if buttonLandConn then
+            buttonLandConn:Disconnect()
+        end
+        newButton:Destroy()
+        
+        local character = player.Character or player.CharacterAdded:Wait()
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            for _, track in ipairs(humanoid:GetPlayingAnimationTracks()) do
+                track:Stop(0)
+            end
+            
+            local anim1 = Instance.new("Animation")
+            anim1.AnimationId = "rbxassetid://120559120832874"
+            local track1 = humanoid:LoadAnimation(anim1)
+            track1:Play()
+            
+            local anim2 = Instance.new("Animation")
+            anim2.AnimationId = "rbxassetid://100091654111356"
+            local track2 = humanoid:LoadAnimation(anim2)
+            track2:Play()
+            
+            local hrp = character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                if hrp.Velocity.Y > 0 then
+                    hrp.Velocity = Vector3.new(hrp.Velocity.X, 0, hrp.Velocity.Z)
+                end
+                
+                local slowFallForce = Instance.new("BodyForce")
+                slowFallForce.Parent = hrp
+                local mass = hrp.AssemblyMass
+                local desiredFallAcceleration = 2  
+                local upwardForce = mass * (workspace.Gravity - desiredFallAcceleration)
+                slowFallForce.Force = Vector3.new(0, upwardForce, 0)
+
+                -- Create Cancel Button (Appears at Top-Right)
+                cancelButton = Instance.new("ImageButton")
+                cancelButton.Size = UDim2.new(0.08, 0, 0.2, 0)  
+                cancelButton.Position = UDim2.new(0.9, 0, 0, 0)  
+                cancelButton.Image = "rbxassetid://83658405719705"  -- Set your Image ID here
+                cancelButton.BackgroundTransparency = 1
+                cancelButton.Parent = screenGui
+
+                local function cancelSlowFall()
+                    if slowFallForce then
+                        slowFallForce:Destroy()
+                    end
+                    track1:Stop(0)
+                    track2:Stop(0)
+                    if cancelButton and cancelButton.Parent then
+                        cancelButton:Destroy()
+                    end
+                end
+
+                cancelButton.MouseButton1Click:Connect(cancelSlowFall)
+
+                -- PC Key Bind to Cancel (Y)
+                local function onKeyPress(input, gameProcessed)
+                    if not gameProcessed and input.KeyCode == Enum.KeyCode.Y then
+                        cancelSlowFall()
+                    end
+                end
+                UserInputService.InputBegan:Connect(onKeyPress)
+
+                local landConn = humanoid.StateChanged:Connect(function(_, newState)
+                    if newState == Enum.HumanoidStateType.Landed then
+                        cancelSlowFall()
+                        landConn:Disconnect()
+                    end
+                end)
+            end
+        end
+    end)
+
+    -- Cooldown Timer (23 seconds)
+    button2.Visible = false
+    task.delay(23, function()
+        button2.Visible = true
+    end)
+end
+
+-- Mobile Support (Button Click)
+button2.MouseButton1Click:Connect(activatePrimaryButton)
+
+-- PC Support (Key Bind: H)
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == Enum.KeyCode.H then
+        activatePrimaryButton()
+    end
+end)
